@@ -1,62 +1,89 @@
-require('dotenv').config();
-const express    = require('express');
-const cors       = require('cors');
-const helmet     = require('helmet');
-const morgan     = require('morgan');
-const rateLimit  = require('express-rate-limit');
-const connectDB  = require('./config/db');
-const errorHandler = require('./middleware/errorHandler');
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const rateLimit = require('express-rate-limit');
+const loanRoutes = require('./routes/loanRoutes');
 
-connectDB();
+dotenv.config();
 
 const app = express();
 
-// ── Security headers
-app.use(helmet());
 
-// ── CORS — allow only your React dev server
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
-}));
+// =========================
+// Middleware
+// =========================
 
-// ── HTTP request logger (dev only)
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-}
+app.use(cors());
 
-// ── Body parsing
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
-// ── Global rate limiter (100 requests per 15 min per IP)
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { success: false, message: 'Too many requests. Try again later.' }
-});
-app.use('/api', globalLimiter);
+app.use(express.urlencoded({ extended: true }));
 
-// ── Stricter limiter for auth routes (5 per 15 min)
+app.use('/api/loans', loanRoutes);
+ 
+// =========================
+// Rate Limiter
+// =========================
+
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
-  message: { success: false, message: 'Too many auth attempts. Try again later.' }
+  message: 'Too many requests, please try again later.'
 });
 
-// ── Routes
-app.use('/api/auth',        authLimiter, require('./routes/authRoutes'));
-app.use('/api/loans',       require('./routes/loanRoutes'));
-app.use('/api/marketplace', require('./routes/marketplaceRoutes'));
 
-// ── Health check
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+// =========================
+// Routes
+// =========================
 
-// ── 404 handler
-app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
+// Health Route
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK'
+  });
+});
 
-// ── Global error handler (must be last, 4 params)
-app.use(errorHandler);
+
+// Example Auth Route
+app.use('/api/auth', authLimiter, (req, res) => {
+  res.json({
+    message: 'Auth route working'
+  });
+});
+
+
+// =========================
+// 404 Handler
+// =========================
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found'
+  });
+});
+
+
+// =========================
+// Error Handler
+// =========================
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+
+  res.status(500).json({
+    success: false,
+    message: 'Internal Server Error'
+  });
+});
+
+
+// =========================
+// Server Start
+// =========================
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`[Server] Running on port ${PORT} (${process.env.NODE_ENV})`));
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
